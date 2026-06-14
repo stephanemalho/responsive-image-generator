@@ -1,6 +1,6 @@
 # Responsive Image Generator
 
-App locale Next.js pour deposer une image et generer un ZIP responsive en AVIF, WebP et JPEG.
+App locale Next.js pour deposer une ou plusieurs images associees et generer un ZIP responsive en AVIF, WebP et JPEG.
 
 ## Stack
 
@@ -20,11 +20,11 @@ Ouvrez ensuite `http://localhost:3000`.
 
 ## Usage
 
-1. Deposez ou selectionnez une image JPEG, PNG ou WebP statique.
+1. Deposez ou selectionnez une ou plusieurs images JPEG, PNG ou WebP statiques.
 2. Ajustez le nom du dossier si besoin.
 3. Cliquez sur `Generer le ZIP`.
 
-Le ZIP suit cette structure :
+Avec une seule image, le ZIP suit cette structure :
 
 ```text
 nom-image/
@@ -43,6 +43,26 @@ nom-image/
   manifest.json
 ```
 
+Avec plusieurs images, elles sont stockees dans le meme dossier et partagent le meme nom de base. Chaque image recoit un numero apres le nom de base :
+
+```text
+nom-chien/
+  avif/
+    nom-chien-1-mobile.avif
+    nom-chien-1-tablet.avif
+    nom-chien-1-desktop.avif
+    nom-chien-2-mobile.avif
+    nom-chien-2-tablet.avif
+    nom-chien-2-desktop.avif
+  webp/
+    nom-chien-1-mobile.webp
+    nom-chien-2-mobile.webp
+  jpeg/
+    nom-chien-1-mobile.jpeg
+    nom-chien-2-mobile.jpeg
+  manifest.json
+```
+
 ## Presets et formats
 
 - Mobile : 480 px
@@ -52,6 +72,7 @@ nom-image/
 - Pas d'upscale : si la source est plus petite qu'un preset, la largeur source est utilisee et le manifest contient un avertissement
 - Qualites : JPEG 82, WebP 78, AVIF 50
 - Metadonnees EXIF supprimees par defaut
+- En selection multiple, la limite de 25 MB s'applique a chaque image
 
 ## Exemple HTML
 
@@ -90,7 +111,7 @@ nom-image/
 
 ## Limites v1
 
-- Taille d'upload maximale : 25 MB
+- Taille d'upload maximale : 25 MB par image
 - Formats acceptes : JPEG, PNG, WebP statique
 - Formats refuses : SVG, GIF anime, HEIC/HEIF
 - Traitement en memoire, adapte a l'usage local et aux petites demos

@@ -18,8 +18,44 @@ const BLOCKED_MIME_TYPES = new Set([
   "image/heif",
 ]);
 
+function getImages(formData: FormData) {
+  const images = formData.getAll("images").filter((item) => item instanceof File);
+  const fallbackImage = formData.get("image");
+
+  if (images.length > 0) {
+    return images;
+  }
+
+  return fallbackImage instanceof File ? [fallbackImage] : [];
+}
+
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
+}
+
+function validateImage(image: File) {
+  if (image.size > MAX_IMAGE_SIZE) {
+    return {
+      message: `${image.name}: image trop lourde. La limite v1 est de 25 MB.`,
+      status: 413,
+    };
+  }
+
+  if (BLOCKED_MIME_TYPES.has(image.type)) {
+    return {
+      message: `${image.name}: SVG, GIF, HEIC et HEIF ne sont pas supportes en v1.`,
+      status: 400,
+    };
+  }
+
+  if (!SUPPORTED_MIME_TYPES.has(image.type)) {
+    return {
+      message: `${image.name}: format non supporte. Utilisez JPEG, PNG ou WebP statique.`,
+      status: 400,
+    };
+  }
+
+  return null;
 }
 
 export async function POST(request: Request) {
@@ -31,35 +67,43 @@ export async function POST(request: Request) {
     return jsonError("Requete multipart/form-data invalide.");
   }
 
-  const image = formData.get("image");
+  const images = getImages(formData);
   const requestedFolderName = formData.get("folderName");
 
-  if (!(image instanceof File)) {
-    return jsonError("Ajoutez une image JPEG, PNG ou WebP statique.");
+  if (images.length === 0) {
+    return jsonError("Ajoutez une ou plusieurs images JPEG, PNG ou WebP statiques.");
   }
 
-  if (image.size > MAX_IMAGE_SIZE) {
-    return jsonError("Image trop lourde. La limite v1 est de 25 MB.", 413);
+  for (const image of images) {
+    const validationError = validateImage(image);
+    if (validationError) {
+      return jsonError(validationError.message, validationError.status);
+    }
   }
 
-  if (BLOCKED_MIME_TYPES.has(image.type)) {
-    return jsonError("SVG, GIF, HEIC et HEIF ne sont pas supportes en v1.");
-  }
-
-  if (!SUPPORTED_MIME_TYPES.has(image.type)) {
-    return jsonError("Format non supporte. Utilisez JPEG, PNG ou WebP statique.");
-  }
-
-  const fallbackName = sanitizeAssetName(filenameStem(image.name));
+  const fallbackName = sanitizeAssetName(filenameStem(images[0].name));
   const folderName = sanitizeAssetName(
     typeof requestedFolderName === "string" ? requestedFolderName : fallbackName,
     fallbackName,
   );
 
   try {
-    const input = Buffer.from(await image.arrayBuffer());
-    const imageSet = await generateResponsiveImageSet(input, folderName);
-    const zip = await createResponsiveImageZip(folderName, imageSet);
+    const entries = await Promise.all(
+      images.map(async (image, index) => {
+        const assetName =
+          images.length > 1 ? `${folderName}-${index + 1}` : folderName;
+        const input = Buffer.from(await image.arrayBuffer());
+        const imageSet = await generateResponsiveImageSet(input, assetName);
+
+        return {
+          index: index + 1,
+          sourceFilename: image.name,
+          assetName,
+          imageSet,
+        };
+      }),
+    );
+    const zip = await createResponsiveImageZip(folderName, entries);
 
     return new NextResponse(Buffer.from(zip), {
       headers: {

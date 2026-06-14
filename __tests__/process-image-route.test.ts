@@ -38,6 +38,19 @@ async function createRequest(file: File, folderName = "Hero Image") {
   });
 }
 
+async function createMultiImageRequest(files: File[], folderName = "Oscar") {
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append("images", file);
+  }
+  formData.set("folderName", folderName);
+
+  return new Request("http://localhost/api/process-image", {
+    method: "POST",
+    body: formData,
+  });
+}
+
 describe("POST /api/process-image", () => {
   it("returns a ZIP for a valid upload", async () => {
     const file = await createFile("image/jpeg", "hero.jpg");
@@ -51,6 +64,29 @@ describe("POST /api/process-image", () => {
     expect(zip.file("hero-image/avif/hero-image-mobile.avif")).toBeTruthy();
     expect(zip.file("hero-image/webp/hero-image-tablet.webp")).toBeTruthy();
     expect(zip.file("hero-image/jpeg/hero-image-desktop.jpeg")).toBeTruthy();
+  });
+
+  it("returns one ZIP folder with prefixed files for multiple uploads", async () => {
+    const firstFile = await createFile("image/jpeg", "front.jpg");
+    const secondFile = await createFile("image/jpeg", "profile.jpg");
+    const response = await POST(
+      await createMultiImageRequest([firstFile, secondFile]),
+    );
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const zip = await JSZip.loadAsync(buffer);
+    const manifest = JSON.parse(
+      await zip.file("oscar/manifest.json")!.async("string"),
+    ) as { imageCount: number; images: Array<{ assetName: string }> };
+
+    expect(response.status).toBe(200);
+    expect(zip.file("oscar/avif/oscar-1-mobile.avif")).toBeTruthy();
+    expect(zip.file("oscar/webp/oscar-2-tablet.webp")).toBeTruthy();
+    expect(zip.file("oscar/jpeg/oscar-2-desktop.jpeg")).toBeTruthy();
+    expect(manifest.imageCount).toBe(2);
+    expect(manifest.images.map((image) => image.assetName)).toEqual([
+      "oscar-1",
+      "oscar-2",
+    ]);
   });
 
   it("rejects unsupported image types with a clear error", async () => {

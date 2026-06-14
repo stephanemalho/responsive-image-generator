@@ -40,9 +40,11 @@ describe("ResponsiveImageGenerator", () => {
     render(<ResponsiveImageGenerator />);
 
     expect(
-      screen.getByRole("button", { name: /deposer une image/i }),
+      screen.getByRole("button", { name: /deposer une ou plusieurs images/i }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText(/selectionner une image/i)).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/selectionner une ou plusieurs images/i),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /generer le zip/i })).toBeDisabled();
   });
 
@@ -50,7 +52,7 @@ describe("ResponsiveImageGenerator", () => {
     render(<ResponsiveImageGenerator />);
     const file = new File(["source"], "Hero Image.jpg", { type: "image/jpeg" });
 
-    fireEvent.change(screen.getByLabelText(/selectionner une image/i), {
+    fireEvent.change(screen.getByLabelText(/selectionner une ou plusieurs images/i), {
       target: { files: [file] },
     });
 
@@ -63,11 +65,33 @@ describe("ResponsiveImageGenerator", () => {
     render(<ResponsiveImageGenerator />);
     const file = new File(["source"], "Dropped Hero.png", { type: "image/png" });
 
-    fireEvent.drop(screen.getByRole("button", { name: /deposer une image/i }), {
+    fireEvent.drop(
+      screen.getByRole("button", { name: /deposer une ou plusieurs images/i }),
+      {
       dataTransfer: { files: [file] },
-    });
+      },
+    );
 
     expect(await screen.findByDisplayValue("dropped-hero")).toBeInTheDocument();
+  });
+
+  it("supports selecting multiple images with one shared folder name", async () => {
+    render(<ResponsiveImageGenerator />);
+    const firstFile = new File(["front"], "Oscar Front.jpg", {
+      type: "image/jpeg",
+    });
+    const secondFile = new File(["side"], "Oscar Side.jpg", {
+      type: "image/jpeg",
+    });
+
+    fireEvent.change(screen.getByLabelText(/selectionner une ou plusieurs images/i), {
+      target: { files: [firstFile, secondFile] },
+    });
+
+    expect(await screen.findByDisplayValue("oscar-front")).toBeInTheDocument();
+    expect(await screen.findByText("2. Oscar Side.jpg")).toBeInTheDocument();
+    expect(await screen.findByText("18 fichiers")).toBeInTheDocument();
+    expect(await screen.findByText("oscar-front-1-mobile.avif")).toBeInTheDocument();
   });
 
   it("normalizes a manually edited folder name", async () => {
@@ -86,12 +110,12 @@ describe("ResponsiveImageGenerator", () => {
     render(<ResponsiveImageGenerator />);
     const file = new File(["<svg />"], "icon.svg", { type: "image/svg+xml" });
 
-    fireEvent.change(screen.getByLabelText(/selectionner une image/i), {
+    fireEvent.change(screen.getByLabelText(/selectionner une ou plusieurs images/i), {
       target: { files: [file] },
     });
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Choisissez un JPEG, PNG ou WebP statique.",
+      "icon.svg: choisissez un JPEG, PNG ou WebP statique.",
     );
   });
 });

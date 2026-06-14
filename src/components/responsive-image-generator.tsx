@@ -21,6 +21,12 @@ type ImageInfo = {
   height: number;
 };
 
+type SelectedImage = {
+  id: string;
+  file: File;
+  info: ImageInfo;
+};
+
 type GenerationState = "idle" | "loading" | "success" | "error";
 
 const MAX_IMAGE_SIZE = 25 * 1024 * 1024;
@@ -64,9 +70,11 @@ function loadImageInfo(file: File) {
   });
 }
 
-async function downloadZip(file: File, folderName: string) {
+async function downloadZip(files: File[], folderName: string) {
   const formData = new FormData();
-  formData.set("image", file);
+  for (const file of files) {
+    formData.append("images", file);
+  }
   formData.set("folderName", folderName);
 
   const response = await fetch("/api/process-image", {
@@ -93,78 +101,89 @@ async function downloadZip(file: File, folderName: string) {
 }
 
 export function ResponsiveImageGenerator() {
-  const [file, setFile] = useState<File | null>(null);
+  const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
   const [folderName, setFolderName] = useState("");
-  const [imageInfo, setImageInfo] = useState<ImageInfo | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [state, setState] = useState<GenerationState>("idle");
   const [message, setMessage] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const firstImage = selectedImages[0];
+  const selectedFiles = selectedImages.map((image) => image.file);
+  const totalSize = selectedFiles.reduce((size, file) => size + file.size, 0);
 
   useEffect(() => {
     return () => {
-      if (imageInfo?.url) {
-        URL.revokeObjectURL(imageInfo.url);
+      for (const image of selectedImages) {
+        URL.revokeObjectURL(image.info.url);
       }
     };
-  }, [imageInfo?.url]);
+  }, [selectedImages]);
 
   const expectedOutputs = useMemo(() => {
     return RESPONSIVE_PRESETS.map((preset) => {
-      const outputWidth = imageInfo
-        ? Math.min(imageInfo.width, preset.width)
+      const outputWidth = firstImage
+        ? Math.min(firstImage.info.width, preset.width)
         : preset.width;
-      const outputHeight = imageInfo
-        ? Math.round((outputWidth / imageInfo.width) * imageInfo.height)
+      const outputHeight = firstImage
+        ? Math.round((outputWidth / firstImage.info.width) * firstImage.info.height)
         : null;
 
       return {
         ...preset,
         outputWidth,
         outputHeight,
-        warning: Boolean(imageInfo && imageInfo.width < preset.width),
+        warning: Boolean(
+          selectedImages.some((image) => image.info.width < preset.width),
+        ),
       };
     });
-  }, [imageInfo]);
+  }, [firstImage, selectedImages]);
 
-  async function selectFile(selectedFile: File | undefined) {
-    if (!selectedFile) {
+  async function selectFiles(nextFiles: File[]) {
+    if (nextFiles.length === 0) {
       return;
     }
 
     setState("idle");
     setMessage("");
 
-    if (!SUPPORTED_TYPES.includes(selectedFile.type)) {
-      setFile(null);
-      setImageInfo(null);
-      setMessage("Choisissez un JPEG, PNG ou WebP statique.");
+    const unsupportedFile = nextFiles.find(
+      (file) => !SUPPORTED_TYPES.includes(file.type),
+    );
+    if (unsupportedFile) {
+      clearFiles();
+      setMessage(`${unsupportedFile.name}: choisissez un JPEG, PNG ou WebP statique.`);
       setState("error");
       return;
     }
 
-    if (selectedFile.size > MAX_IMAGE_SIZE) {
-      setFile(null);
-      setImageInfo(null);
-      setMessage("Image trop lourde. La limite v1 est de 25 MB.");
+    const oversizedFile = nextFiles.find((file) => file.size > MAX_IMAGE_SIZE);
+    if (oversizedFile) {
+      clearFiles();
+      setMessage(`${oversizedFile.name}: image trop lourde. La limite v1 est de 25 MB.`);
       setState("error");
       return;
     }
 
     try {
-      const nextInfo = await loadImageInfo(selectedFile);
-      setFile(selectedFile);
-      setImageInfo((previousInfo) => {
-        if (previousInfo?.url) {
-          URL.revokeObjectURL(previousInfo.url);
+      const images = await Promise.all(
+        nextFiles.map(async (file, index) => ({
+          id: `${file.name}-${file.size}-${file.lastModified}-${index}`,
+          file,
+          info: await loadImageInfo(file),
+        })),
+      );
+
+      setSelectedImages((previousImages) => {
+        for (const image of previousImages) {
+          URL.revokeObjectURL(image.info.url);
         }
 
-        return nextInfo;
+        return images;
       });
-      setFolderName(sanitizeAssetName(filenameStem(selectedFile.name)));
+      setFolderName(sanitizeAssetName(filenameStem(nextFiles[0].name)));
     } catch (error) {
-      setFile(null);
-      setImageInfo(null);
+      clearFiles();
       setMessage(
         error instanceof Error ? error.message : "Impossible de lire l'image.",
       );
@@ -173,8 +192,8 @@ export function ResponsiveImageGenerator() {
   }
 
   async function handleGenerate() {
-    if (!file) {
-      setMessage("Ajoutez une image avant de generer le ZIP.");
+    if (selectedImages.length === 0) {
+      setMessage("Ajoutez au moins une image avant de generer le ZIP.");
       setState("error");
       return;
     }
@@ -185,8 +204,10 @@ export function ResponsiveImageGenerator() {
     setMessage("");
 
     try {
-      await downloadZip(file, safeFolderName);
-      setMessage("ZIP genere et telechargement lance.");
+      await downloadZip(selectedFiles, safeFolderName);
+      setMessage(
+        `ZIP genere pour ${selectedImages.length} image${selectedImages.length > 1 ? "s" : ""}.`,
+      );
       setState("success");
     } catch (error) {
       setMessage(
@@ -196,9 +217,14 @@ export function ResponsiveImageGenerator() {
     }
   }
 
-  function clearFile() {
-    setFile(null);
-    setImageInfo(null);
+  function clearFiles() {
+    setSelectedImages((previousImages) => {
+      for (const image of previousImages) {
+        URL.revokeObjectURL(image.info.url);
+      }
+
+      return [];
+    });
     setFolderName("");
     setMessage("");
     setState("idle");
@@ -230,11 +256,14 @@ export function ResponsiveImageGenerator() {
             <div className="flex flex-col gap-4">
               <input
                 ref={inputRef}
-                aria-label="Selectionner une image"
+                aria-label="Selectionner une ou plusieurs images"
                 className="sr-only"
                 type="file"
+                multiple
                 accept="image/jpeg,image/png,image/webp"
-                onChange={(event) => selectFile(event.target.files?.[0])}
+                onChange={(event) =>
+                  selectFiles(Array.from(event.target.files ?? []))
+                }
               />
 
               <button
@@ -255,17 +284,17 @@ export function ResponsiveImageGenerator() {
                 onDrop={(event) => {
                   event.preventDefault();
                   setIsDragging(false);
-                  void selectFile(event.dataTransfer.files[0]);
+                  void selectFiles(Array.from(event.dataTransfer.files));
                 }}
               >
                 <span className="flex size-12 items-center justify-center rounded-lg bg-stone-950 text-white">
                   <ImagePlus aria-hidden className="size-6" />
                 </span>
                 <span className="text-base font-medium text-stone-950">
-                  Deposer une image
+                  Deposer une ou plusieurs images
                 </span>
                 <span className="max-w-60 text-sm leading-6 text-stone-600">
-                  JPEG, PNG ou WebP statique jusqu&apos;a 25 MB.
+                  JPEG, PNG ou WebP statique, 25 MB max par image.
                 </span>
               </button>
 
@@ -285,7 +314,7 @@ export function ResponsiveImageGenerator() {
               <button
                 className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-stone-950 px-4 text-sm font-medium text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
                 type="button"
-                disabled={!file || state === "loading"}
+                disabled={selectedImages.length === 0 || state === "loading"}
                 onClick={() => void handleGenerate()}
               >
                 {state === "loading" ? (
@@ -318,19 +347,19 @@ export function ResponsiveImageGenerator() {
 
             <div className="flex min-w-0 flex-col gap-4">
               <div className="relative flex min-h-85 items-center justify-center overflow-hidden rounded-lg border border-stone-200 bg-[linear-gradient(45deg,#f5f5f4_25%,transparent_25%),linear-gradient(-45deg,#f5f5f4_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#f5f5f4_75%),linear-gradient(-45deg,transparent_75%,#f5f5f4_75%)] bg-[length:22px_22px] bg-[position:0_0,0_11px,11px_-11px,-11px_0]">
-                {imageInfo ? (
+                {firstImage ? (
                   <>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      alt="Apercu de l'image source"
+                      alt="Apercu de la premiere image source"
                       className="max-h-[520px] w-auto max-w-full object-contain"
-                      src={imageInfo.url}
+                      src={firstImage.info.url}
                     />
                     <button
-                      aria-label="Retirer l'image"
+                      aria-label="Retirer les images"
                       className="absolute right-3 top-3 flex size-9 items-center justify-center rounded-md bg-white/95 text-stone-800 shadow-sm ring-1 ring-black/10 transition hover:bg-white"
                       type="button"
-                      onClick={clearFile}
+                      onClick={clearFiles}
                     >
                       <X aria-hidden className="size-4" />
                     </button>
@@ -343,17 +372,47 @@ export function ResponsiveImageGenerator() {
                 )}
               </div>
 
-              {file && imageInfo ? (
+              {firstImage ? (
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <Metric label="Fichier" value={formatBytes(file.size)} />
+                  <Metric label="Images" value={`${selectedImages.length}`} />
+                  <Metric label="Poids total" value={formatBytes(totalSize)} />
                   <Metric
-                    label="Source"
-                    value={`${imageInfo.width} x ${imageInfo.height}`}
+                    label="Premiere"
+                    value={`${firstImage.info.width} x ${firstImage.info.height}`}
                   />
-                  <Metric label="Sorties" value="9 fichiers" />
-                  <Metric label="ZIP" value="local" />
+                  <Metric
+                    label="Sorties"
+                    value={`${selectedImages.length * 9} fichiers`}
+                  />
                 </div>
               ) : null}
+
+              {selectedImages.length > 1 ? (
+                <div className="grid max-h-40 grid-cols-2 gap-2 overflow-auto sm:grid-cols-3">
+                  {selectedImages.map((image, index) => (
+                    <div
+                      className="flex min-w-0 items-center gap-2 rounded-md border border-stone-200 bg-stone-50 p-2"
+                      key={image.id}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        alt=""
+                        className="size-10 rounded-sm object-cover"
+                        src={image.info.url}
+                      />
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-medium text-stone-900">
+                          {index + 1}. {image.file.name}
+                        </p>
+                        <p className="font-mono text-xs text-stone-500">
+                          {image.info.width} x {image.info.height}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
             </div>
           </div>
         </section>
@@ -362,7 +421,8 @@ export function ResponsiveImageGenerator() {
           <div>
             <h2 className="text-lg font-semibold">Sorties attendues</h2>
             <p className="mt-1 text-sm leading-6 text-stone-300">
-              Ratio conserve, aucun crop, aucun upscale.
+              Ratio conserve, aucun crop, aucun upscale. En lot, les fichiers
+              gardent le nom de base puis ajoutent -1, -2, -3.
             </p>
           </div>
 
@@ -387,13 +447,15 @@ export function ResponsiveImageGenerator() {
                       className="rounded-sm bg-white/10 px-2 py-1 font-mono text-xs text-stone-100"
                       key={format}
                     >
-                      {folderName || "nom-image"}-{preset.label}.{format}
+                      {folderName || "nom-image"}
+                      {selectedImages.length > 1 ? "-1" : ""}-{preset.label}.
+                      {format}
                     </span>
                   ))}
                 </div>
                 {preset.warning ? (
                   <p className="mt-3 text-xs leading-5 text-amber-200">
-                    Source plus petite que {preset.width}px.
+                    Au moins une source est plus petite que {preset.width}px.
                   </p>
                 ) : null}
               </div>
@@ -407,8 +469,11 @@ export function ResponsiveImageGenerator() {
             <pre className="mt-2 overflow-x-auto font-mono text-xs leading-6 text-emerald-50">
               {`${folderName || "nom-image"}/
   avif/
+    ${folderName || "nom-image"}${selectedImages.length > 1 ? "-1" : ""}-mobile.avif
   webp/
+    ${folderName || "nom-image"}${selectedImages.length > 1 ? "-1" : ""}-mobile.webp
   jpeg/
+    ${folderName || "nom-image"}${selectedImages.length > 1 ? "-1" : ""}-mobile.jpeg
   manifest.json`}
             </pre>
           </div>
