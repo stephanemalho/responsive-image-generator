@@ -10,7 +10,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { filenameStem, sanitizeAssetName } from "@/lib/names";
 import { RESPONSIVE_PRESETS } from "@/lib/responsive-config";
@@ -48,7 +48,10 @@ function formatBytes(bytes: number) {
     unitIndex += 1;
   }
 
-  return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[unitIndex]}`;
+  const formattedSize =
+    Number.isInteger(size) || size >= 10 ? size.toFixed(0) : size.toFixed(1);
+
+  return `${formattedSize} ${units[unitIndex]}`;
 }
 
 function loadImageInfo(file: File) {
@@ -77,6 +80,10 @@ function shouldApplyVercelUploadLimit() {
   }
 
   return !["", "localhost", "127.0.0.1"].includes(window.location.hostname);
+}
+
+function subscribeToEnvironmentSnapshot() {
+  return () => {};
 }
 
 async function downloadZip(files: File[], folderName: string) {
@@ -135,6 +142,14 @@ export function ResponsiveImageGenerator() {
   const firstImage = selectedImages[0];
   const selectedFiles = selectedImages.map((image) => image.file);
   const totalSize = selectedFiles.reduce((size, file) => size + file.size, 0);
+  const usesHostedUploadLimit = useSyncExternalStore(
+    subscribeToEnvironmentSnapshot,
+    shouldApplyVercelUploadLimit,
+    () => false,
+  );
+  const uploadGuidance = usesHostedUploadLimit
+    ? `Prod : JPEG, PNG ou WebP statique, ${formatBytes(VERCEL_SAFE_UPLOAD_SIZE)}.`
+    : `Dev : JPEG, PNG ou WebP statique, ${formatBytes(MAX_IMAGE_SIZE)} max par image.`;
 
   useEffect(() => {
     return () => {
@@ -226,7 +241,7 @@ export function ResponsiveImageGenerator() {
     const safeFolderName = sanitizeAssetName(folderName);
     setFolderName(safeFolderName);
 
-    if (shouldApplyVercelUploadLimit() && totalSize > VERCEL_SAFE_UPLOAD_SIZE) {
+    if (usesHostedUploadLimit && totalSize > VERCEL_SAFE_UPLOAD_SIZE) {
       setMessage(
         `Lot trop lourd pour la demo Vercel (${formatBytes(totalSize)}). Limite recommandee: ${formatBytes(VERCEL_SAFE_UPLOAD_SIZE)} au total. Reduisez les images ou utilisez la version locale.`,
       );
@@ -328,7 +343,7 @@ export function ResponsiveImageGenerator() {
                   Deposer une ou plusieurs images
                 </span>
                 <span className="max-w-60 text-sm leading-6 text-stone-600">
-                  JPEG, PNG ou WebP statique, 25 MB max par image.
+                  {uploadGuidance}
                 </span>
               </button>
 

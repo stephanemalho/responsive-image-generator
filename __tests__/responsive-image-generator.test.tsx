@@ -36,7 +36,7 @@ describe("ResponsiveImageGenerator", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders the expected empty state", () => {
+  it("renders the expected empty state", async () => {
     render(<ResponsiveImageGenerator />);
 
     expect(
@@ -44,6 +44,9 @@ describe("ResponsiveImageGenerator", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByLabelText(/selectionner une ou plusieurs images/i),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("Prod : JPEG, PNG ou WebP statique, 4 MB."),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /generer le zip/i })).toBeDisabled();
   });
