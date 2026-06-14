@@ -10,6 +10,11 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    environmentOptions: {
+      jsdom: {
+        url: "https://demo.vercel.app/",
+      },
+    },
     include: ["__tests__/**/*.test.{ts,tsx}"],
     setupFiles: ["./vitest.setup.ts"],
   },

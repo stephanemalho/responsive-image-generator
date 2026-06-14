@@ -115,10 +115,13 @@ nom-chien/
 - Formats acceptes : JPEG, PNG, WebP statique
 - Formats refuses : SVG, GIF anime, HEIC/HEIF
 - Traitement en memoire, adapte a l'usage local et aux petites demos
+- Demo Vercel : gardez le lot sous environ 4 MB au total. Les Vercel Functions limitent le corps de requete et de reponse a 4.5 MB, ce qui inclut l'upload et le ZIP genere.
 
 ## Vercel
 
-Une demo Vercel est possible avec la route API en runtime Node.js (`export const runtime = "nodejs"`). Gardez les limites serverless en tete : taille de body, memoire disponible et duree d'execution peuvent varier selon l'offre et la configuration. Pour une v2 SaaS, stocker les resultats dans Cloudflare R2 avec URLs publiques ou signees serait une evolution naturelle.
+Une demo Vercel est possible avec la route API en runtime Node.js (`export const runtime = "nodejs"`). Gardez les limites serverless en tete : taille de body, memoire disponible et duree d'execution peuvent varier selon l'offre et la configuration. La v1 locale accepte des images plus lourdes que la demo Vercel.
+
+Pour une v2 SaaS, stocker les resultats dans Cloudflare R2 avec URLs publiques ou signees serait une evolution naturelle. Cela contournerait la limite de 4.5 MB en envoyant les fichiers vers un stockage objet plutot que dans le corps de la reponse Vercel.
 
 ## Scripts
 

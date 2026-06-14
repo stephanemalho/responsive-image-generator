@@ -30,6 +30,7 @@ type SelectedImage = {
 type GenerationState = "idle" | "loading" | "success" | "error";
 
 const MAX_IMAGE_SIZE = 25 * 1024 * 1024;
+const VERCEL_SAFE_UPLOAD_SIZE = 4 * 1024 * 1024;
 const SUPPORTED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const FORMAT_OUTPUTS = ["avif", "webp", "jpeg"] as const;
 
@@ -70,6 +71,14 @@ function loadImageInfo(file: File) {
   });
 }
 
+function shouldApplyVercelUploadLimit() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return !["", "localhost", "127.0.0.1"].includes(window.location.hostname);
+}
+
 async function downloadZip(files: File[], folderName: string) {
   const formData = new FormData();
   for (const file of files) {
@@ -83,10 +92,26 @@ async function downloadZip(files: File[], folderName: string) {
   });
 
   if (!response.ok) {
-    const data = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new Error(data?.error ?? "La generation a echoue.");
+    const contentType = response.headers.get("content-type") ?? "";
+
+    if (contentType.includes("application/json")) {
+      const data = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      throw new Error(data?.error ?? "La generation a echoue.");
+    }
+
+    if (response.status === 413) {
+      throw new Error(
+        "Upload trop lourd pour la demo Vercel. La limite plateforme est de 4.5 MB pour la requete et la reponse.",
+      );
+    }
+
+    const text = await response.text().catch(() => "");
+    throw new Error(
+      text.trim() ||
+        `La generation a echoue cote plateforme. Statut HTTP ${response.status}.`,
+    );
   }
 
   const blob = await response.blob();
@@ -200,6 +225,15 @@ export function ResponsiveImageGenerator() {
 
     const safeFolderName = sanitizeAssetName(folderName);
     setFolderName(safeFolderName);
+
+    if (shouldApplyVercelUploadLimit() && totalSize > VERCEL_SAFE_UPLOAD_SIZE) {
+      setMessage(
+        `Lot trop lourd pour la demo Vercel (${formatBytes(totalSize)}). Limite recommandee: ${formatBytes(VERCEL_SAFE_UPLOAD_SIZE)} au total. Reduisez les images ou utilisez la version locale.`,
+      );
+      setState("error");
+      return;
+    }
+
     setState("loading");
     setMessage("");
 

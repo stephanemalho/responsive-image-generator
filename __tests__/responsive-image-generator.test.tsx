@@ -68,7 +68,7 @@ describe("ResponsiveImageGenerator", () => {
     fireEvent.drop(
       screen.getByRole("button", { name: /deposer une ou plusieurs images/i }),
       {
-      dataTransfer: { files: [file] },
+        dataTransfer: { files: [file] },
       },
     );
 
@@ -92,6 +92,22 @@ describe("ResponsiveImageGenerator", () => {
     expect(await screen.findByText("2. Oscar Side.jpg")).toBeInTheDocument();
     expect(await screen.findByText("18 fichiers")).toBeInTheDocument();
     expect(await screen.findByText("oscar-front-1-mobile.avif")).toBeInTheDocument();
+  });
+
+  it("blocks oversized Vercel uploads before sending the request", async () => {
+    render(<ResponsiveImageGenerator />);
+    const file = new File([new Uint8Array(4 * 1024 * 1024 + 1)], "Big.jpg", {
+      type: "image/jpeg",
+    });
+
+    fireEvent.change(screen.getByLabelText(/selectionner une ou plusieurs images/i), {
+      target: { files: [file] },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /generer le zip/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Lot trop lourd pour la demo Vercel",
+    );
   });
 
   it("normalizes a manually edited folder name", async () => {

@@ -10,6 +10,7 @@ import { createResponsiveImageZip } from "@/lib/zip-responsive-image-set";
 export const runtime = "nodejs";
 
 const MAX_IMAGE_SIZE = 25 * 1024 * 1024;
+const VERCEL_SAFE_PAYLOAD_SIZE = 4 * 1024 * 1024;
 const SUPPORTED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const BLOCKED_MIME_TYPES = new Set([
   "image/svg+xml",
@@ -104,6 +105,13 @@ export async function POST(request: Request) {
       }),
     );
     const zip = await createResponsiveImageZip(folderName, entries);
+
+    if (process.env.VERCEL === "1" && zip.byteLength > VERCEL_SAFE_PAYLOAD_SIZE) {
+      return jsonError(
+        "ZIP trop lourd pour la demo Vercel. La limite plateforme est de 4.5 MB pour la requete et la reponse. Reduisez le nombre ou le poids des images.",
+        413,
+      );
+    }
 
     return new NextResponse(Buffer.from(zip), {
       headers: {
