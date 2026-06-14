@@ -23,7 +23,7 @@ async function createFile(
       .jpeg()
       .toBuffer());
 
-  const body = size ? new Uint8Array(size) : content;
+  const body = size ? new Uint8Array(size) : new Uint8Array(content);
   return new File([body], filename, { type });
 }
 

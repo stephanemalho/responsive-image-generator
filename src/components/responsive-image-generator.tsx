@@ -317,7 +317,7 @@ export function ResponsiveImageGenerator() {
             </div>
 
             <div className="flex min-w-0 flex-col gap-4">
-              <div className="relative flex min-h-[340px] items-center justify-center overflow-hidden rounded-lg border border-stone-200 bg-[linear-gradient(45deg,#f5f5f4_25%,transparent_25%),linear-gradient(-45deg,#f5f5f4_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#f5f5f4_75%),linear-gradient(-45deg,transparent_75%,#f5f5f4_75%)] bg-[length:22px_22px] bg-[position:0_0,0_11px,11px_-11px,-11px_0]">
+              <div className="relative flex min-h-85 items-center justify-center overflow-hidden rounded-lg border border-stone-200 bg-[linear-gradient(45deg,#f5f5f4_25%,transparent_25%),linear-gradient(-45deg,#f5f5f4_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#f5f5f4_75%),linear-gradient(-45deg,transparent_75%,#f5f5f4_75%)] bg-[length:22px_22px] bg-[position:0_0,0_11px,11px_-11px,-11px_0]">
                 {imageInfo ? (
                   <>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
